@@ -3,283 +3,229 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D圣诞树（手机适配版）</title>
+    <title>特朗普豪华3D圣诞树（手机适配版）</title>
     <style>
         :root {
-            --bg-color: #1a2420; /* 核心修改1：深绿灰（替代原纯黑），亮且保留氛围感 */
-            --gold: #D4AF37;
-            --red: #8B0000;
+            --bg-color: #1a2420; /* 亮背景（深绿灰），清晰显示金色圣诞树 */
+            --gold: #FFD700;
         }
-        body { margin: 0; overflow: hidden; background: var(--bg-color); font-family: sans-serif; }
-        
-        #ui-layer {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-            z-index: 10;
+        body { 
+            margin: 0; overflow: hidden; 
+            background: var(--bg-color); 
+            font-family: sans-serif;
         }
-        #instructions {
-            position: absolute;
-            top: 20px; left: 20px;
-            color: var(--gold);
-            background: rgba(0,0,0,0.6);
-            padding: 15px;
-            border-radius: 8px;
-            max-width: 250px;
-            font-size: 14px;
-        }
-        .key-point { font-weight: bold; color: #fff; }
         #control-btn {
             position: absolute;
             bottom: 20px; left: 50%;
             transform: translateX(-50%);
-            pointer-events: auto;
-            background: var(--red);
-            color: white;
+            background: var(--gold);
+            color: #000;
+            border: 2px solid #FFC107;
             padding: 12px 24px;
-            border: 1px solid var(--gold);
             border-radius: 24px;
             font-size: 16px;
             font-weight: bold;
+            z-index: 10;
             cursor: pointer;
-            box-shadow: 0 0 10px var(--red);
+            box-shadow: 0 0 15px var(--gold);
         }
-        #upload-btn {
-            position: absolute;
-            top: 20px; right: 20px;
-            pointer-events: auto;
-            background: var(--red);
-            color: white;
-            padding: 12px 24px;
-            border: 1px solid var(--gold);
-            border-radius: 24px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 0 10px var(--red);
-        }
-        input[type="file"] { display: none; }
     </style>
-    <!-- 本地Three.js（打包版，无CDN依赖） -->
+    <!-- 仅加载核心Three.js + 必要的辉光插件（保证星星光晕） -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/postprocessing/EffectComposer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/postprocessing/RenderPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 </head>
 <body>
-    <div id="ui-layer">
-        <div id="instructions">
-            <h3>🎄 3D圣诞树</h3>
-            <p><span class="key-point">👇 点击按钮:</span> 切换聚合/散开模式</p>
-            <p><span class="key-point">📷 上传照片:</span> 添加自定义素材</p>
-        </div>
-        <button id="control-btn">聚合成圣诞树</button>
-        <label id="upload-btn">
-            上传照片
-            <input type="file" id="file-input" accept="image/*">
-        </label>
-    </div>
+    <button id="control-btn">切换聚合/散开</button>
 
     <script>
         // 全局状态
-        const state = {
-            mode: 'TREE', // TREE=聚合 SCATTER=散开
-            zoomIndex: -1
-        };
+        const state = { mode: 'TREE' };
 
-        // 配置项
+        // 核心配置（兼顾豪华效果+手机性能）
         const CONFIG = {
-            colors: { green: 0x2F4F4F, gold: 0xFFD700, red: 0x8B0000 },
-            particleCount: 200,
+            colors: { 
+                gold: 0xFFD700,       // 特朗普金色
+                green: 0x2F4F4F,      // 深绿（衬托金色）
+                starGlow: 0xFFFF00    // 星星光晕色
+            },
+            particleCount: 120,       // 精简粒子数（手机流畅）
             treeHeight: 20,
             treeRadius: 8,
-            scatterRadius: 30
+            scatterRadius: 25,
+            starSize: 3              // 星星大小
         };
 
-        // 1. 初始化Three.js场景
+        // 1. 初始化场景（居中显示核心）
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x1a2420, 0.015); // 核心修改2：雾化颜色同步背景色，且降低雾化浓度（0.015）
+        scene.background = new THREE.Color(--bg-color); // 亮背景色
+        scene.fog = new THREE.FogExp2(0x1a2420, 0.01);  // 轻微雾化，保留氛围感
 
+        // 相机（确保圣诞树居中）
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 10, 40);
+        camera.position.set(0, 10, 35); // 视角优化，聚焦中央圣诞树
+        camera.lookAt(0, 0, 0);         // 强制相机看向屏幕中央
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        // 渲染器（手机性能优化）
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            alpha: true,
+            powerPreference: "low-power" // 适配手机低功耗
+        });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // 限制像素比
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.5; // 轻微提高曝光，让圣诞树更亮
+        renderer.toneMappingExposure = 1.2; // 曝光度优化，金色更亮
         document.body.appendChild(renderer.domElement);
 
-        // 灯光
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4)); // 提高环境光强度（从0.2→0.4）
-        const spotLight = new THREE.SpotLight(CONFIG.colors.gold, 600); // 提高射灯亮度（500→600）
-        spotLight.position.set(20, 50, 20);
-        scene.add(spotLight);
-        const redLight = new THREE.PointLight(CONFIG.colors.red, 300, 50); // 提高红灯亮度（200→300）
-        redLight.position.set(-10, 10, 10);
-        scene.add(redLight);
+        // 2. 灯光系统（强化金色金属质感）
+        // 环境光（提亮整体）
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
 
-        // 辉光效果
+        // 定向光（突出金属反光）
+        const dirLight = new THREE.DirectionalLight(CONFIG.colors.gold, 1.2);
+        dirLight.position.set(15, 20, 10);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // 点光（强化星星/金属球高光）
+        const pointLight = new THREE.PointLight(CONFIG.colors.gold, 1.5, 50);
+        pointLight.position.set(0, 15, 0); // 光源在圣诞树顶部
+        scene.add(pointLight);
+
+        // 3. 辉光效果（星星光晕专用）
         const renderScene = new THREE.RenderPass(scene, camera);
-        const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-        bloomPass.threshold = 0.2;
-        bloomPass.strength = 1.0;
+        const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.3, 0.2);
+        bloomPass.threshold = 0.1;
+        bloomPass.strength = 1.8; // 星星光晕强度
+        bloomPass.radius = 0.5;
         const composer = new THREE.EffectComposer(renderer);
         composer.addPass(renderScene);
         composer.addPass(bloomPass);
 
-        // 2. 创建3D对象
+        // 4. 核心效果1：特朗普式豪华金色金属球
         const objects = [];
-        const textureLoader = new THREE.TextureLoader();
+        // 金色金属材质（高金属度+低粗糙度）
+        const goldMaterial = new THREE.MeshStandardMaterial({
+            color: CONFIG.colors.gold,
+            metalness: 0.95,  // 高金属度（豪华质感）
+            roughness: 0.05,  // 低粗糙度（镜面反光）
+            emissive: 0x332200, // 轻微自发光，更豪华
+            emissiveIntensity: 0.2
+        });
+        // 绿色金属材质（衬托金色）
+        const greenMaterial = new THREE.MeshStandardMaterial({
+            color: CONFIG.colors.green,
+            metalness: 0.7,
+            roughness: 0.1
+        });
 
-        // 材质
-        const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, metalness: 0.9 });
-        const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, metalness: 0.2 });
-        const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, metalness: 0.6, emissive: 0x330000 });
+        // 球体几何（精简分段，手机流畅）
+        const sphereGeo = new THREE.SphereGeometry(0.6, 12, 12);
 
-        // 几何形状
-        const geoSphere = new THREE.SphereGeometry(0.5, 16, 16);
-        const geoBox = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-
-        // 生成圣诞树位置
-        function getTreePosition(index, total, isOuter=false) {
-            const y = (index / total) * CONFIG.treeHeight;
-            const r = (1 - index/total) * CONFIG.treeRadius + (isOuter ? 2 : 0);
+        // 生成圣诞树位置（严格居中）
+        function getTreePosition(index, total) {
+            const y = (index / total) * CONFIG.treeHeight - CONFIG.treeHeight/2; // 垂直居中
+            const r = (1 - index/total) * CONFIG.treeRadius;
             const angle = index * 137.5 * Math.PI/180;
-            return new THREE.Vector3(r*Math.cos(angle), y-CONFIG.treeHeight/2, r*Math.sin(angle));
+            return new THREE.Vector3(r*Math.cos(angle), y, r*Math.sin(angle)); // 中心点(0,0,0)
         }
 
         // 生成散开位置
         function getScatterPosition() {
             const v = new THREE.Vector3();
-            v.randomDirection().multiplyScalar(Math.random()*CONFIG.scatterRadius + 10);
+            v.randomDirection().multiplyScalar(Math.random()*CONFIG.scatterRadius + 5);
             return v;
         }
 
-        // 创建装饰粒子
-        function createDecorations() {
-            for (let i=0; i<CONFIG.particleCount; i++) {
-                const mesh = Math.random()<0.6 
-                    ? new THREE.Mesh(geoSphere, Math.random()<0.3 ? matGold : (Math.random()<0.6 ? matRed : matGreen))
-                    : new THREE.Mesh(geoBox, Math.random()<0.5 ? matGold : matRed);
-                
-                mesh.position.set((Math.random()-0.5)*100, (Math.random()-0.5)*100, (Math.random()-0.5)*100);
-                mesh.userData = {
-                    type: 'decoration',
-                    posTree: getTreePosition(i, CONFIG.particleCount),
-                    posScatter: getScatterPosition(),
-                    rotationSpeed: new THREE.Vector3(Math.random()*0.02, Math.random()*0.02, 0)
-                };
-                scene.add(mesh);
-                objects.push(mesh);
-            }
-        }
-
-        // 创建照片占位符
-        function createPhotoPlaceholder(imgUrl=null) {
-            const geometry = new THREE.PlaneGeometry(3, 4);
-            let material;
-
-            if (imgUrl) {
-                const tex = textureLoader.load(imgUrl);
-                tex.colorSpace = THREE.SRGBColorSpace;
-                material = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
-            } else {
-                // 默认占位图
-                const canvas = document.createElement('canvas');
-                canvas.width = 256; canvas.height = 340;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#fff'; ctx.fillRect(0,0,256,340);
-                ctx.fillStyle = '#ccc'; ctx.fillRect(10,10,236,250);
-                ctx.fillStyle = '#000'; ctx.font = '30px Arial'; ctx.fillText('PHOTO', 80, 150);
-                const tex = new THREE.CanvasTexture(canvas);
-                material = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
-            }
-
-            const mesh = new THREE.Mesh(geometry, material);
-            const i = objects.length;
+        // 创建金属球粒子
+        for (let i=0; i<CONFIG.particleCount; i++) {
+            // 每5个粒子放1个金色金属球（特朗普豪华比例）
+            const material = i % 5 === 0 ? goldMaterial : greenMaterial;
+            const mesh = new THREE.Mesh(sphereGeo, material);
             mesh.userData = {
-                type: 'photo',
-                posTree: getTreePosition(i, CONFIG.particleCount+10, true),
+                posTree: getTreePosition(i, CONFIG.particleCount),
                 posScatter: getScatterPosition()
             };
-            mesh.position.copy(mesh.userData.posScatter);
+            mesh.position.copy(mesh.userData.posTree);
             scene.add(mesh);
             objects.push(mesh);
         }
 
-        // 初始化粒子和默认照片
-        createDecorations();
-        for(let k=0; k<3; k++) createPhotoPlaceholder();
+        // 5. 核心效果2：立体发光芒星（圣诞树顶部）
+        const starGroup = new THREE.Group();
+        starGroup.position.set(0, CONFIG.treeHeight/2 + 2, 0); // 星星在圣诞树顶部
+        scene.add(starGroup);
 
-        // 3. 交互控制（点击按钮切换模式）
-        const controlBtn = document.getElementById('control-btn');
-        controlBtn.addEventListener('click', () => {
-            if (state.mode === 'TREE') {
-                state.mode = 'SCATTER';
-                controlBtn.textContent = '聚合成圣诞树';
-            } else {
-                state.mode = 'TREE';
-                controlBtn.textContent = '散开/旋转视角';
-            }
+        // 八面体几何（芒星基础）
+        const octaGeo = new THREE.OctahedronGeometry(CONFIG.starSize, 0);
+        // 星星发光材质
+        const starMaterial = new THREE.MeshStandardMaterial({
+            color: CONFIG.colors.starGlow,
+            metalness: 1.0,
+            roughness: 0.0,
+            emissive: CONFIG.colors.starGlow,
+            emissiveIntensity: 1.5 // 星星自发光（光晕核心）
         });
 
-        // 照片上传
-        document.getElementById('file-input').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => createPhotoPlaceholder(event.target.result);
-                reader.readAsDataURL(file);
-                state.mode = 'SCATTER';
-                controlBtn.textContent = '聚合成圣诞树';
-            }
-        });
+        // 两个错位八面体组成芒星
+        const star1 = new THREE.Mesh(octaGeo, starMaterial);
+        star1.rotation.x = Math.PI / 4;
+        star1.rotation.y = 0;
+        starGroup.add(star1);
 
-        // 4. 动画循环
+        const star2 = new THREE.Mesh(octaGeo, starMaterial);
+        star2.rotation.x = 0;
+        star2.rotation.y = Math.PI / 4;
+        starGroup.add(star2);
+
+        // 星星旋转动画（增强立体感）
+        function animateStar() {
+            starGroup.rotation.x += 0.005;
+            starGroup.rotation.y += 0.008;
+            requestAnimationFrame(animateStar);
+        }
+        animateStar();
+
+        // 6. 交互控制（切换聚合/散开）
+        document.getElementById('control-btn').onclick = () => {
+            state.mode = state.mode === 'TREE' ? 'SCATTER' : 'TREE';
+        };
+
+        // 7. 动画循环（流畅+性能优化）
         const clock = new THREE.Clock();
-        const lerpSpeed = 0.05;
+        const lerpSpeed = 0.04;
+
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            // 场景旋转
-            if (state.mode === 'SCATTER') {
-                scene.rotation.y += 0.01; // 散开时快速旋转
-                scene.rotation.x += Math.sin(clock.getElapsedTime()*0.5) * 0.005;
-            } else {
-                scene.rotation.y += 0.005; // 聚合时慢速旋转
-                scene.rotation.x *= 0.95;
-            }
+            // 场景轻微旋转（增强动感）
+            scene.rotation.y += 0.003;
 
-            // 更新对象位置
-            objects.forEach((obj, idx) => {
-                const target = new THREE.Vector3();
-                if (state.mode === 'TREE') {
-                    target.copy(obj.userData.posTree);
-                    target.y += Math.sin(clock.getElapsedTime()*2 + idx) * 0.1;
-                } else {
-                    target.copy(obj.userData.posScatter);
-                    target.x += Math.cos(clock.getElapsedTime()+idx) * 0.05;
-                    target.y += Math.sin(clock.getElapsedTime()+idx) * 0.05;
-                }
-
+            // 更新粒子位置（居中效果不变）
+            objects.forEach(obj => {
+                const target = state.mode === 'TREE' ? obj.userData.posTree : obj.userData.posScatter;
                 obj.position.lerp(target, lerpSpeed);
-                if (obj.userData.type === 'decoration') {
-                    obj.rotation.x += obj.userData.rotationSpeed.x;
-                    obj.rotation.y += obj.userData.rotationSpeed.y;
-                }
+                // 金属球轻微自转（强化反光效果）
+                obj.rotation.x += 0.002;
+                obj.rotation.y += 0.003;
             });
 
-            composer.render();
+            // 渲染（优先辉光效果）
+            composer.render(delta);
         }
 
-        // 窗口适配
+        // 8. 窗口适配（保证居中）
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
             composer.setSize(window.innerWidth, window.innerHeight);
+            // 始终保证相机看向屏幕中央
+            camera.lookAt(0, 0, 0);
         });
 
         // 启动动画
